@@ -472,19 +472,31 @@ async def main():
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("statusbtc", status_command)) # Alias untuk /status tanpa argumen
 
+    # Mulai bot Telegram secara asynchronous
+    # Inisialisasi bot dan mulai polling di latar belakang
+    await application.initialize() # Inisialisasi bot Telegram
+    await application.start()      # Mulai bot Telegram
+
     # Buat daftar tugas untuk setiap koneksi WebSocket
     websocket_tasks = [handle_websocket(tf) for tf in TIMEFRAMES]
     
     # Tambahkan tugas untuk memeriksa sinyal global
     global_signal_check_task = check_global_signal_and_send()
 
-    # Jalankan semua tugas secara bersamaan
-    print("Starting all WebSocket handlers, global signal checker, and Telegram bot polling...")
-    await asyncio.gather(
-        *websocket_tasks,
-        global_signal_check_task,
-        application.run_polling()
-    )
+    # Jalankan semua tugas secara bersamaan, KECUALI polling bot Telegram
+    # Karena polling bot sudah dimulai dengan application.start()
+    print("Starting all WebSocket handlers and global signal checker...")
+    
+    try:
+        await asyncio.gather(
+            *websocket_tasks,
+            global_signal_check_task
+        )
+    finally:
+        # Hentikan bot Telegram saat tugas lainnya selesai atau terjadi error
+        print("Stopping Telegram bot...")
+        await application.stop()
+        await application.shutdown() # Tambahkan shutdown untuk membersihkan sumber daya
 
 
 if __name__ == "__main__":
