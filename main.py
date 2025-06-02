@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from ta.trend import EMAIndicator
 from ta.momentum import StochasticOscillator
 from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes # <-- PERUBAHAN DI SINI
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode 
 import websockets
 
@@ -236,7 +236,6 @@ def format_global_signal_output(global_signal_data):
     return msg
 
 # === send_message_to_telegram - Fungsi umum untuk mengirim pesan ===
-# Diubah agar bisa dipanggil dari command handler juga
 async def send_message_to_telegram(chat_id: int, text: str):
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
@@ -329,7 +328,7 @@ async def check_global_signal_and_send():
             }
             
             message = format_global_signal_output(global_signal)
-            await send_message_to_telegram(TELEGRAM_CHAT_ID, message) # Menggunakan send_message_to_telegram
+            await send_message_to_telegram(TELEGRAM_CHAT_ID, message)
             last_global_signal_sent = now 
             
         else:
@@ -341,7 +340,10 @@ async def check_global_signal_and_send():
 
 # Fungsi pembantu untuk memformat output status per timeframe
 def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: datetime):
-    if df.empty or len(df) < max(EMA_SLOW, STOCH_K + STOCH_D, 20):
+    # Required candles for analysis (max of all indicator requirements)
+    required_candles_for_status = max(EMA_SLOW, STOCH_K + STOCH_D, 20) 
+
+    if df.empty or len(df) < required_candles_for_status:
         return (
             f"\\*\\_\\_Status {escape_markdown_v2(timeframe.upper())} (BTC/USDT)__\\*\n"
             f"_Belum ada data yang cukup untuk analisis\._\n"
@@ -353,6 +355,17 @@ def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: date
 
     # Ambil harga real-time (candle mungkin masih open)
     current_price = last_row["close"]
+    
+    # Helper function to safely format indicator values
+    def get_indicator_value(df_row, col_name):
+        val = df_row.get(col_name, pd.NA)
+        return f"{val:.2f}" if pd.notna(val) else "N/A"
+
+    ema13_val = get_indicator_value(last_row, 'EMA13')
+    ema21_val = get_indicator_value(last_row, 'EMA21')
+    stoch_k_val = get_indicator_value(last_row, 'stoch_k')
+    stoch_d_val = get_indicator_value(last_row, 'stoch_d')
+    volume_val = get_indicator_value(last_row, 'volume')
     
     # Periksa kondisi
     conditions = {
@@ -375,11 +388,11 @@ def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: date
     msg = (
         f"\\*\\_\\_Status {escape_markdown_v2(timeframe.upper())} (BTC/USDT)__\\*\n"
         f"Current Price: `${escape_markdown_v2(f'{current_price:.2f}')}`\n"
-        f"EMA13: `{escape_markdown_v2(f'{last_row.get(\'EMA13\', pd.NA):.2f}' if pd.notna(last_row.get('EMA13')) else 'N/A')}`\n"
-        f"EMA21: `{escape_markdown_v2(f'{last_row.get(\'EMA21\', pd.NA):.2f}' if pd.notna(last_row.get('EMA21')) else 'N/A')}`\n"
-        f"Stoch K: `{escape_markdown_v2(f'{last_row.get(\'stoch_k\', pd.NA):.2f}' if pd.notna(last_row.get('stoch_k')) else 'N/A')}`\n"
-        f"Stoch D: `{escape_markdown_v2(f'{last_row.get(\'stoch_d\', pd.NA):.2f}' if pd.notna(last_row.get('stoch_d')) else 'N/A')}`\n"
-        f"Volume: `{escape_markdown_v2(f'{last_row.get(\'volume\', pd.NA):.2f}' if pd.notna(last_row.get('volume')) else 'N/A')}`\n"
+        f"EMA13: `{escape_markdown_v2(ema13_val)}`\n"
+        f"EMA21: `{escape_markdown_v2(ema21_val)}`\n"
+        f"Stoch K: `{escape_markdown_v2(stoch_k_val)}`\n"
+        f"Stoch D: `{escape_markdown_v2(stoch_d_val)}`\n"
+        f"Volume: `{escape_markdown_v2(volume_val)}`\n"
         f"Confidence Score: `{escape_markdown_v2(f'{confidence} / 10')}`\n\n"
         f"Conditions:\n{tech_str}\n"
         f"_Terakhir Diperbarui:_ `{last_update_time}`"
@@ -406,7 +419,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         pass
     else:
         await send_message_to_telegram(user_chat_id, 
-                                     f"Perintah tidak valid\. Gunakan `/status <timeframe>` \(contoh: `/status 1m`\) atau `/statusbtc` untuk semua timeframe\.")
+                                     f"Perintah tidak valid\\. Gunakan `/status <timeframe>` \\(contoh: `/status 1m`\\) atau `/statusbtc` untuk semua timeframe\\.")
         return
 
     current_time = datetime.now(timezone.utc)
@@ -429,9 +442,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(tf)}` tidak tersedia\.")
     
     # Gabungkan semua pesan menjadi satu jika terlalu banyak, atau kirim terpisah jika pendek
-    if len("\n\n---\n\n".join(response_messages)) < 4096: # Batas pesan Telegram
-        await send_message_to_telegram(user_chat_id, "\n\n---\n\n".join(response_messages))
+    # Batas pesan Telegram adalah 4096 karakter
+    full_message = "\n\n---\n\n".join(response_messages)
+    if len(full_message) < 4096: 
+        await send_message_to_telegram(user_chat_id, full_message)
     else:
+        # Jika pesan terlalu panjang, kirim setiap bagian secara terpisah
         for msg_part in response_messages:
             await send_message_to_telegram(user_chat_id, msg_part)
 
@@ -440,10 +456,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Menanggapi perintah /start."""
     user = update.effective_user
     await send_message_to_telegram(update.effective_chat.id, 
-                                 f"Halo, {escape_markdown_v2(user.full_name)}! Saya adalah bot sinyal BTC/USDT Anda\. "
-                                 f"Gunakan `/status <timeframe>` \(misalnya `/status 1h`\) untuk melihat status terkini, "
-                                 f"atau `/statusbtc` untuk melihat semua timeframe\. "
-                                 f"Saya juga akan mengirim sinyal global saat semua kondisi terpenuhi\.")
+                                 f"Halo, {escape_markdown_v2(user.full_name)}! Saya adalah bot sinyal BTC/USDT Anda\\. "
+                                 f"Gunakan `/status <timeframe>` \\(misalnya `/status 1h`\\) untuk melihat status terkini, "
+                                 f"atau `/statusbtc` untuk melihat semua timeframe\\. "
+                                 f"Saya juga akan mengirim sinyal global saat semua kondisi terpenuhi\\.")
 
 
 # === main function ===
@@ -464,12 +480,10 @@ async def main():
 
     # Jalankan semua tugas secara bersamaan
     print("Starting all WebSocket handlers, global signal checker, and Telegram bot polling...")
-    # application.run_polling() harus dijalankan di loop yang sama atau di thread terpisah.
-    # Cara terbaik adalah menggabungkannya ke dalam asyncio.gather.
     await asyncio.gather(
         *websocket_tasks,
         global_signal_check_task,
-        application.run_polling() # <-- Ini akan menjalankan polling bot Telegram
+        application.run_polling()
     )
 
 
