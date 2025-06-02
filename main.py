@@ -14,6 +14,9 @@ import websockets
 TELEGRAM_TOKEN = "7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc"  # Ganti dengan token bot Telegram Anda
 TELEGRAM_CHAT_ID = 5986744500       # Ganti dengan ID chat Telegram Anda, contoh: 123456789
 
+# DEBUGGING: Cetak TELEGRAM_CHAT_ID yang digunakan saat startup
+print(f"DEBUG: TELEGRAM_CHAT_ID yang digunakan: {TELEGRAM_CHAT_ID}")
+
 # Daftar Timeframe yang akan dipantau
 TIMEFRAMES = ["1m", "1h", "4h", "1w"]
 BASE_BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_" 
@@ -238,10 +241,15 @@ def format_global_signal_output(global_signal_data):
 # === send_message_to_telegram - Fungsi umum untuk mengirim pesan ===
 async def send_message_to_telegram(chat_id: int, text: str):
     bot = Bot(token=TELEGRAM_TOKEN)
+    # DEBUGGING: Cetak chat_id yang sedang dicoba dikirimi pesan
+    print(f"DEBUG: Mencoba mengirim pesan ke chat_id: {chat_id}")
     try:
         await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN_V2)
+        # DEBUGGING: Cetak konfirmasi jika pesan berhasil dikirim
+        print(f"DEBUG: Pesan berhasil dikirim ke {chat_id}.")
     except Exception as e:
-        print(f"Error sending Telegram message: {e}")
+        # DEBUGGING: Cetak error yang lebih informatif jika pengiriman gagal
+        print(f"ERROR: Gagal mengirim Telegram message ke {chat_id}: {e}")
 
 # === handle_websocket - Hanya untuk update data ===
 async def handle_websocket(timeframe):
@@ -403,9 +411,13 @@ def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: date
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menanggapi perintah /status <timeframe> atau /statusbtc."""
     user_chat_id = update.effective_chat.id
+    # DEBUGGING: Cetak chat_id dari mana perintah diterima
+    print(f"DEBUG: Perintah '/status' diterima dari chat_id: {user_chat_id}")
 
     # Izinkan hanya dari TELEGRAM_CHAT_ID yang sudah dikonfigurasi
     if user_chat_id != TELEGRAM_CHAT_ID:
+        # DEBUGGING: Informasikan jika chat ID tidak diizinkan
+        print(f"DEBUG: Chat ID {user_chat_id} tidak diizinkan. Hanya {TELEGRAM_CHAT_ID} yang diizinkan.")
         await send_message_to_telegram(user_chat_id, "Maaf, Anda tidak diizinkan menggunakan bot ini.")
         return
 
@@ -442,12 +454,10 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(tf)}` tidak tersedia\.")
     
     # Gabungkan semua pesan menjadi satu jika terlalu banyak, atau kirim terpisah jika pendek
-    # Batas pesan Telegram adalah 4096 karakter
     full_message = "\n\n---\n\n".join(response_messages)
     if len(full_message) < 4096: 
         await send_message_to_telegram(user_chat_id, full_message)
     else:
-        # Jika pesan terlalu panjang, kirim setiap bagian secara terpisah
         for msg_part in response_messages:
             await send_message_to_telegram(user_chat_id, msg_part)
 
@@ -455,6 +465,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menanggapi perintah /start."""
     user = update.effective_user
+    # DEBUGGING: Cetak informasi user yang mengirim perintah /start
+    print(f"DEBUG: Perintah '/start' diterima dari user: {user.full_name} ({update.effective_chat.id})")
     await send_message_to_telegram(update.effective_chat.id, 
                                  f"Halo, {escape_markdown_v2(user.full_name)}! Saya adalah bot sinyal BTC/USDT Anda\\. "
                                  f"Gunakan `/status <timeframe>` \\(misalnya `/status 1h`\\) untuk melihat status terkini, "
