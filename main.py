@@ -4,8 +4,9 @@ import pandas as pd
 from datetime import datetime, timezone
 from ta.trend import EMAIndicator
 from ta.momentum import StochasticOscillator
-from telegram import Bot
-from telegram.constants import ParseMode
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes # <-- PERUBAHAN DI SINI
+from telegram.constants import ParseMode 
 import websockets
 
 # === KONFIGURASI ===
@@ -20,7 +21,6 @@ BASE_BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@kline_"
 # Simpan candles untuk setiap timeframe
 all_candles = {tf: pd.DataFrame() for tf in TIMEFRAMES}
 # Status untuk melacak apakah candle terakhir sudah diproses untuk setiap timeframe
-# Ini akan membantu memastikan kita hanya menganalisis candle yang sudah close di semua TFs
 last_candle_processed_time = {tf: None for tf in TIMEFRAMES}
 
 # Parameter Indikator (bisa disesuaikan per timeframe jika mau, tapi ini global)
@@ -63,12 +63,20 @@ def update_candles(data, timeframe):
         }])
 
         current_df = all_candles[timeframe]
-        current_df = pd.concat([current_df, new_row], ignore_index=True)
+        # Pastikan tidak ada duplikat berdasarkan open_time
+        if not current_df.empty and current_df['open_time'].iloc[-1] == open_time:
+            # Update baris terakhir jika candle yang sama diperbarui (price berubah)
+            current_df.iloc[-1] = new_row.iloc[0]
+        else:
+            # Tambah baris baru jika open_time berbeda (candle baru)
+            current_df = pd.concat([current_df, new_row], ignore_index=True)
+        
         if len(current_df) > 500: 
             current_df = current_df.iloc[-500:].reset_index(drop=True)
         all_candles[timeframe] = current_df 
         last_candle_processed_time[timeframe] = open_time # Update waktu candle terakhir yang diproses
 
+# Hitung indikator teknikal di DataFrame
 def calculate_indicators(df):
     df_copy = df.copy()
     
@@ -186,7 +194,7 @@ def escape_markdown_v2(text):
     return ''.join(['\\' + char if char in escape_chars else char for char in text])
 
 
-# === format_global_signal_output - Perubahan besar di sini ===
+# === format_global_signal_output ===
 def format_global_signal_output(global_signal_data):
     symbol = escape_markdown_v2(global_signal_data['symbol'])
     entry_type = escape_markdown_v2(global_signal_data['entry_type'])
@@ -227,25 +235,25 @@ def format_global_signal_output(global_signal_data):
     )
     return msg
 
-async def send_signal_to_telegram(msg: str):
+# === send_message_to_telegram - Fungsi umum untuk mengirim pesan ===
+# Diubah agar bisa dipanggil dari command handler juga
+async def send_message_to_telegram(chat_id: int, text: str):
     bot = Bot(token=TELEGRAM_TOKEN)
     try:
-        await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg, parse_mode=ParseMode.MARKDOWN_V2)
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN_V2)
     except Exception as e:
         print(f"Error sending Telegram message: {e}")
 
-# === handle_websocket - Sekarang hanya untuk update data ===
+# === handle_websocket - Hanya untuk update data ===
 async def handle_websocket(timeframe):
     url = BASE_BINANCE_WS_URL + timeframe
-    while True: # Loop untuk reconnect otomatis
+    while True: 
         try:
             async with websockets.connect(url) as ws:
                 print(f"Connected to Binance WebSocket for {timeframe}...")
                 async for raw in ws:
                     data = json.loads(raw)
-                    # Pastikan ini adalah event kline dan data 'k' ada
                     if data.get('e') == 'kline' and 'k' in data:
-                        # update_candles sekarang hanya dipanggil untuk candle yang sudah close
                         update_candles(data, timeframe) 
 
         except websockets.exceptions.ConnectionClosedOK:
@@ -255,9 +263,9 @@ async def handle_websocket(timeframe):
         except Exception as e:
             print(f"An unexpected error occurred for {timeframe}: {e}. Reconnecting in 5 seconds...")
         
-        await asyncio.sleep(5) # Jeda sebelum mencoba reconnect
+        await asyncio.sleep(5) 
 
-# === check_global_signal_and_send - Fungsi baru untuk menganalisis semua timeframe ===
+# === check_global_signal_and_send ===
 async def check_global_signal_and_send():
     global last_global_signal_sent
     required_candles_for_analysis = max(EMA_SLOW, STOCH_K + STOCH_D, 20) 
@@ -265,39 +273,30 @@ async def check_global_signal_and_send():
     while True:
         now = datetime.now(timezone.utc)
         
-        # Cek cooldown sinyal global
         if last_global_signal_sent and (now - last_global_signal_sent).total_seconds() < GLOBAL_SIGNAL_COOLDOWN:
-            # print(f"Global signal cooldown active. Next check in {(GLOBAL_SIGNAL_COOLDOWN - (now - last_global_signal_sent).total_seconds()):.0f} seconds.")
-            await asyncio.sleep(60) # Cek lagi dalam 1 menit
+            await asyncio.sleep(60) 
             continue
 
-        # Cek apakah semua timeframe sudah punya candle yang cukup dan terbaru
         all_timeframes_ready = True
         detailed_signal_info = {}
-        current_price = None # Akan diambil dari 1m atau TF terkecil
+        current_price = None 
 
         for tf in TIMEFRAMES:
             df = all_candles[tf]
             
-            # Pastikan ada cukup data untuk analisis
             if df.empty or len(df) < required_candles_for_analysis:
-                # print(f"Global check: Not enough data for {tf} ({len(df)}/{required_candles_for_analysis} candles).")
                 all_timeframes_ready = False
                 break
             
             df_analyzed = calculate_indicators(df)
             
-            # Pastikan candle terakhir tidak memiliki NaN setelah perhitungan indikator
             if df_analyzed.iloc[-1].isnull().any():
-                # print(f"Global check: NaN values in {tf} indicators for latest candle. Skipping this global check.")
                 all_timeframes_ready = False
                 break
 
-            # Jika ini adalah timeframe tercepat (1m), ambil harga untuk entry suggestion
             if tf == "1m":
                 current_price = df_analyzed.iloc[-1]["close"]
 
-            # Hitung kondisi dan confidence untuk timeframe ini
             conditions = {
                 "EMA13 Cross Above EMA21": check_bullish_cross(df_analyzed),
                 "Price Above EMA13 & EMA21": check_price_above_emas(df_analyzed),
@@ -307,9 +306,7 @@ async def check_global_signal_and_send():
             }
             confidence = compute_confidence(list(conditions.values()))
 
-            # Cek apakah confidence per timeframe memenuhi syarat
             if confidence < PER_TIMEFRAME_SIGNAL_THRESHOLD:
-                # print(f"Global check: {tf} confidence ({confidence}) below threshold ({PER_TIMEFRAME_SIGNAL_THRESHOLD}).")
                 all_timeframes_ready = False
                 break
             
@@ -321,30 +318,144 @@ async def check_global_signal_and_send():
         if all_timeframes_ready and current_price is not None:
             print("Global signal conditions MET across all timeframes!")
             
-            # Buat pesan sinyal global
             global_signal = {
                 "symbol": "BTC/USDT",
                 "entry_type": "LONG",
                 "entry_price": current_price,
-                "target_range": (current_price * 1.01, current_price * 1.03), # Target 1-3%
-                "stop_loss": current_price * 0.99, # Stop Loss 1%
+                "target_range": (current_price * 1.01, current_price * 1.03), 
+                "stop_loss": current_price * 0.99, 
                 "time": now,
-                "timeframe_details": detailed_signal_info # Ini akan berisi detail per timeframe
+                "timeframe_details": detailed_signal_info 
             }
             
             message = format_global_signal_output(global_signal)
-            await send_signal_to_telegram(message)
-            last_global_signal_sent = now # Update timestamp sinyal global
+            await send_message_to_telegram(TELEGRAM_CHAT_ID, message) # Menggunakan send_message_to_telegram
+            last_global_signal_sent = now 
             
         else:
             print("Global signal conditions NOT met or not enough data yet.")
             
-        # Jeda sebelum cek global berikutnya. Bisa disesuaikan.
-        # Misalnya, setiap 1 menit atau 5 menit.
-        await asyncio.sleep(60) # Cek setiap 1 menit
+        await asyncio.sleep(60) 
+
+# === Fungsi untuk Perintah On-Demand ===
+
+# Fungsi pembantu untuk memformat output status per timeframe
+def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: datetime):
+    if df.empty or len(df) < max(EMA_SLOW, STOCH_K + STOCH_D, 20):
+        return (
+            f"\\*\\_\\_Status {escape_markdown_v2(timeframe.upper())} (BTC/USDT)__\\*\n"
+            f"_Belum ada data yang cukup untuk analisis\._\n"
+            f"_Terakhir Diperbarui:_ `{escape_markdown_v2(current_time.strftime('%d %b %Y - %H:%M:%S UTC'))}`"
+        )
+    
+    df_analyzed = calculate_indicators(df)
+    last_row = df_analyzed.iloc[-1]
+
+    # Ambil harga real-time (candle mungkin masih open)
+    current_price = last_row["close"]
+    
+    # Periksa kondisi
+    conditions = {
+        "EMA13 Cross Above EMA21": check_bullish_cross(df_analyzed),
+        "Price Above EMA13 & EMA21": check_price_above_emas(df_analyzed),
+        "Stochastic Oversold Cross": check_stoch_oversold_cross(df_analyzed),
+        "Bullish Divergence": detect_divergence(df_analyzed),
+        "Volume > MA20": check_volume(df_analyzed)
+    }
+    confidence = compute_confidence(list(conditions.values()))
+
+    tech_status = []
+    for cond, valid in conditions.items():
+        emoji = "✅" if valid else "❌"
+        tech_status.append(f"  {emoji} {escape_markdown_v2(cond)}")
+    tech_str = "\n".join(tech_status)
+
+    last_update_time = escape_markdown_v2(current_time.strftime("%d %b %Y - %H:%M:%S UTC"))
+    
+    msg = (
+        f"\\*\\_\\_Status {escape_markdown_v2(timeframe.upper())} (BTC/USDT)__\\*\n"
+        f"Current Price: `${escape_markdown_v2(f'{current_price:.2f}')}`\n"
+        f"EMA13: `{escape_markdown_v2(f'{last_row.get("EMA13", pd.NA):.2f}' if pd.notna(last_row.get('EMA13')) else 'N/A')}`\n"
+        f"EMA21: `{escape_markdown_v2(f'{last_row.get("EMA21", pd.NA):.2f}' if pd.notna(last_row.get('EMA21')) else 'N/A')}`\n"
+        f"Stoch K: `{escape_markdown_v2(f'{last_row.get("stoch_k", pd.NA):.2f}' if pd.notna(last_row.get('stoch_k')) else 'N/A')}`\n"
+        f"Stoch D: `{escape_markdown_v2(f'{last_row.get("stoch_d", pd.NA):.2f}' if pd.notna(last_row.get('stoch_d')) else 'N/A')}`\n"
+        f"Volume: `{escape_markdown_v2(f'{last_row.get("volume", pd.NA):.2f}' if pd.notna(last_row.get('volume')) else 'N/A')}`\n"
+        f"Confidence Score: `{escape_markdown_v2(f'{confidence} / 10')}`\n\n"
+        f"Conditions:\n{tech_str}\n"
+        f"_Terakhir Diperbarui:_ `{last_update_time}`"
+    )
+    return msg
+
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menanggapi perintah /status <timeframe> atau /statusbtc."""
+    user_chat_id = update.effective_chat.id
+
+    # Izinkan hanya dari TELEGRAM_CHAT_ID yang sudah dikonfigurasi
+    if user_chat_id != TELEGRAM_CHAT_ID:
+        await send_message_to_telegram(user_chat_id, "Maaf, Anda tidak diizinkan menggunakan bot ini.")
+        return
+
+    args = context.args
+    target_timeframe = None
+
+    if len(args) == 1 and args[0].lower() in [tf.lower() for tf in TIMEFRAMES]:
+        target_timeframe = args[0].lower()
+    elif len(args) == 0:
+        # Jika tidak ada argumen, default ke /statusbtc yang menunjukkan semua TF
+        pass
+    else:
+        await send_message_to_telegram(user_chat_id, 
+                                     f"Perintah tidak valid\. Gunakan `/status <timeframe>` \(contoh: `/status 1m`\) atau `/statusbtc` untuk semua timeframe\.")
+        return
+
+    current_time = datetime.now(timezone.utc)
+    response_messages = []
+
+    if target_timeframe:
+        # Kirim status untuk timeframe spesifik
+        if target_timeframe in all_candles:
+            message_content = format_timeframe_status(target_timeframe, all_candles[target_timeframe], current_time)
+            response_messages.append(message_content)
+        else:
+            response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(target_timeframe)}` tidak tersedia\.")
+    else:
+        # Kirim status untuk semua timeframe (seperti /statusbtc)
+        for tf in TIMEFRAMES:
+            if tf in all_candles:
+                message_content = format_timeframe_status(tf, all_candles[tf], current_time)
+                response_messages.append(message_content)
+            else:
+                response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(tf)}` tidak tersedia\.")
+    
+    # Gabungkan semua pesan menjadi satu jika terlalu banyak, atau kirim terpisah jika pendek
+    if len("\n\n---\n\n".join(response_messages)) < 4096: # Batas pesan Telegram
+        await send_message_to_telegram(user_chat_id, "\n\n---\n\n".join(response_messages))
+    else:
+        for msg_part in response_messages:
+            await send_message_to_telegram(user_chat_id, msg_part)
+
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menanggapi perintah /start."""
+    user = update.effective_user
+    await send_message_to_telegram(update.effective_chat.id, 
+                                 f"Halo, {escape_markdown_v2(user.full_name)}! Saya adalah bot sinyal BTC/USDT Anda\. "
+                                 f"Gunakan `/status <timeframe>` \(misalnya `/status 1h`\) untuk melihat status terkini, "
+                                 f"atau `/statusbtc` untuk melihat semua timeframe\. "
+                                 f"Saya juga akan mengirim sinyal global saat semua kondisi terpenuhi\.")
+
 
 # === main function ===
 async def main():
+    # Inisialisasi Telegram Application
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Tambahkan command handler
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("status", status_command))
+    application.add_handler(CommandHandler("statusbtc", status_command)) # Alias untuk /status tanpa argumen
+
     # Buat daftar tugas untuk setiap koneksi WebSocket
     websocket_tasks = [handle_websocket(tf) for tf in TIMEFRAMES]
     
@@ -352,8 +463,14 @@ async def main():
     global_signal_check_task = check_global_signal_and_send()
 
     # Jalankan semua tugas secara bersamaan
-    print("Starting all WebSocket handlers and global signal checker...")
-    await asyncio.gather(*websocket_tasks, global_signal_check_task)
+    print("Starting all WebSocket handlers, global signal checker, and Telegram bot polling...")
+    # application.run_polling() harus dijalankan di loop yang sama atau di thread terpisah.
+    # Cara terbaik adalah menggabungkannya ke dalam asyncio.gather.
+    await asyncio.gather(
+        *websocket_tasks,
+        global_signal_check_task,
+        application.run_polling() # <-- Ini akan menjalankan polling bot Telegram
+    )
 
 
 if __name__ == "__main__":
@@ -362,5 +479,6 @@ if __name__ == "__main__":
         print("TELEGRAM_CHAT_ID harus berupa integer non-nol (contoh: 123456789 atau -123456789).")
         print("Skrip tidak dapat berjalan tanpa konfigurasi yang benar.")
     else:
-        print("Starting the multi-timeframe GLOBAL signal bot...")
+        print("Starting the multi-timeframe GLOBAL signal bot with on-demand status...")
         asyncio.run(main())
+
