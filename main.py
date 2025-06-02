@@ -4,7 +4,9 @@ import pandas as pd
 from datetime import datetime, timezone
 from ta.trend import EMAIndicator
 from ta.momentum import StochasticOscillator
-from telegram import Bot, ParseMode
+from telegram import Bot
+from telegram.constants import ParseMode # Baris ini yang diubah
+
 import websockets
 
 # === KONFIGURASI ===
