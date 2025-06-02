@@ -325,7 +325,7 @@ async def main():
 
 if __name__ == "__main__":
     # Pastikan TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID telah diisi dengan benar
-    if TELEGRAM_TOKEN == "7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc" or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
+    if TELEGRAM_TOKEN == "YOUR_TELEGRAM_TOKEN" or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
         print("ERROR: Mohon isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di bagian KONFIGURASI.")
         print("TELEGRAM_CHAT_ID harus berupa integer non-nol (contoh: 123456789 atau -123456789).")
         print("Skrip tidak dapat berjalan tanpa konfigurasi yang benar.")
