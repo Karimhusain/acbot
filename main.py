@@ -8,6 +8,7 @@ from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode 
 import websockets
+import traceback # <--- TAMBAHKAN INI
 
 # === KONFIGURASI ===
 # PENTING: Ganti nilai-nilai placeholder ini dengan milik Anda!
@@ -241,37 +242,38 @@ def format_global_signal_output(global_signal_data):
 # === send_message_to_telegram - Fungsi umum untuk mengirim pesan ===
 async def send_message_to_telegram(chat_id: int, text: str):
     bot = Bot(token=TELEGRAM_TOKEN)
+    # DEBUGGING: Cetak chat_id yang sedang dicoba dikirimi pesan
     print(f"DEBUG: Mencoba mengirim pesan ke chat_id: {chat_id}")
-    print(f"DEBUG: Panjang pesan: {len(text)} karakter.")
-    print(f"DEBUG: Awal pesan: '{text[:500]}...'") # Cetak 500 karakter pertama pesan
+    print(f"DEBUG: Panjang pesan: {len(text)} karakter.") # <--- DEBUG TAMBAHAN
+    print(f"DEBUG: Awal pesan: '{text[:500]}...'") # Cetak 500 karakter pertama pesan <--- DEBUG TAMBAHAN
     try:
         await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN_V2)
+        # DEBUGGING: Cetak konfirmasi jika pesan berhasil dikirim
         print(f"DEBUG: Pesan berhasil dikirim ke {chat_id}.")
     except Exception as e:
+        # DEBUGGING: Cetak error yang lebih informatif jika pengiriman gagal
         print(f"ERROR: Gagal mengirim Telegram message ke {chat_id}: {e}")
-        # Ini PENTING: cetak traceback lengkap untuk detail error
-        import traceback
-        traceback.print_exc()
-
+        traceback.print_exc() # <--- PENTING: CETAK TRACEBACK LENGKAP UNTUK DETAIL ERROR
 
 # === handle_websocket - Hanya untuk update data ===
 async def handle_websocket(timeframe):
     url = BASE_BINANCE_WS_URL + timeframe
     while True: 
         try:
+            print(f"DEBUG: Menghubungkan ke WebSocket Binance untuk {timeframe}...") # <--- DEBUG TAMBAHAN
             async with websockets.connect(url) as ws:
-                print(f"Connected to Binance WebSocket for {timeframe}...")
+                print(f"DEBUG: Berhasil terhubung ke WebSocket Binance untuk {timeframe}.") # <--- DEBUG TAMBAHAN
                 async for raw in ws:
                     data = json.loads(raw)
                     if data.get('e') == 'kline' and 'k' in data:
                         update_candles(data, timeframe) 
 
         except websockets.exceptions.ConnectionClosedOK:
-            print(f"WebSocket connection for {timeframe} closed normally. Reconnecting in 5 seconds...")
+            print(f"DEBUG: Koneksi WebSocket untuk {timeframe} ditutup normal. Mencoba menyambung ulang dalam 5 detik...")
         except websockets.exceptions.ConnectionClosedError as e:
-            print(f"WebSocket connection for {timeframe} closed with error: {e}. Reconnecting in 5 seconds...")
+            print(f"ERROR: Koneksi WebSocket untuk {timeframe} ditutup dengan error: {e}. Mencoba menyambung ulang dalam 5 detik...")
         except Exception as e:
-            print(f"An unexpected error occurred for {timeframe}: {e}. Reconnecting in 5 seconds...")
+            print(f"ERROR: Terjadi error tak terduga untuk {timeframe}: {e}. Mencoba menyambung ulang dalam 5 detik...")
         
         await asyncio.sleep(5) 
 
@@ -284,6 +286,7 @@ async def check_global_signal_and_send():
         now = datetime.now(timezone.utc)
         
         if last_global_signal_sent and (now - last_global_signal_sent).total_seconds() < GLOBAL_SIGNAL_COOLDOWN:
+            print(f"DEBUG: Cooldown sinyal global aktif. Sinyal terakhir dikirim pada {last_global_signal_sent}.") # <--- DEBUG TAMBAHAN
             await asyncio.sleep(60) 
             continue
 
@@ -291,16 +294,20 @@ async def check_global_signal_and_send():
         detailed_signal_info = {}
         current_price = None 
 
+        print(f"DEBUG: Memeriksa kondisi sinyal global pada {now.strftime('%H:%M:%S UTC')}...") # <--- DEBUG TAMBAHAN
+
         for tf in TIMEFRAMES:
             df = all_candles[tf]
             
             if df.empty or len(df) < required_candles_for_analysis:
+                print(f"DEBUG: Timeframe {tf} belum memiliki data candle yang cukup ({len(df)}/{required_candles_for_analysis}).") # <--- DEBUG TAMBAHAN
                 all_timeframes_ready = False
                 break
             
             df_analyzed = calculate_indicators(df)
             
             if df_analyzed.iloc[-1].isnull().any():
+                print(f"DEBUG: Indikator {tf} belum terhitung sempurna (ada nilai NA).") # <--- DEBUG TAMBAHAN
                 all_timeframes_ready = False
                 break
 
@@ -317,6 +324,7 @@ async def check_global_signal_and_send():
             confidence = compute_confidence(list(conditions.values()))
 
             if confidence < PER_TIMEFRAME_SIGNAL_THRESHOLD:
+                print(f"DEBUG: Timeframe {tf} confidence ({confidence}) di bawah ambang batas ({PER_TIMEFRAME_SIGNAL_THRESHOLD}).") # <--- DEBUG TAMBAHAN
                 all_timeframes_ready = False
                 break
             
@@ -326,7 +334,7 @@ async def check_global_signal_and_send():
             }
             
         if all_timeframes_ready and current_price is not None:
-            print("Global signal conditions MET across all timeframes!")
+            print("Global signal conditions MET across all timeframes! MENCENG SINYAL...") # <--- DEBUG TAMBAHAN UTAMA
             
             global_signal = {
                 "symbol": "BTC/USDT",
@@ -343,7 +351,7 @@ async def check_global_signal_and_send():
             last_global_signal_sent = now 
             
         else:
-            print("Global signal conditions NOT met or not enough data yet.")
+            print("DEBUG: Kondisi sinyal global BELUM terpenuhi atau data belum cukup.") # <--- DEBUG TAMBAHAN
             
         await asyncio.sleep(60) 
 
@@ -357,7 +365,7 @@ def format_timeframe_status(timeframe: str, df: pd.DataFrame, current_time: date
     if df.empty or len(df) < required_candles_for_status:
         return (
             f"\\*\\_\\_Status {escape_markdown_v2(timeframe.upper())} (BTC/USDT)__\\*\n"
-            f"_Belum ada data yang cukup untuk analisis\._\n"
+            f"_Belum ada data yang cukup untuk analisis\\._\n"
             f"_Terakhir Diperbarui:_ `{escape_markdown_v2(current_time.strftime('%d %b %Y - %H:%M:%S UTC'))}`"
         )
     
@@ -440,13 +448,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     current_time = datetime.now(timezone.utc)
     response_messages = []
 
+    print(f"DEBUG: Mempersiapkan pesan status untuk {target_timeframe if target_timeframe else 'semua timeframe'}...") # <--- DEBUG TAMBAHAN
+
     if target_timeframe:
         # Kirim status untuk timeframe spesifik
         if target_timeframe in all_candles:
             message_content = format_timeframe_status(target_timeframe, all_candles[target_timeframe], current_time)
             response_messages.append(message_content)
         else:
-            response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(target_timeframe)}` tidak tersedia\.")
+            response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(target_timeframe)}` tidak tersedia\\.")
     else:
         # Kirim status untuk semua timeframe (seperti /statusbtc)
         for tf in TIMEFRAMES:
@@ -454,15 +464,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 message_content = format_timeframe_status(tf, all_candles[tf], current_time)
                 response_messages.append(message_content)
             else:
-                response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(tf)}` tidak tersedia\.")
+                response_messages.append(f"Data untuk timeframe `{escape_markdown_v2(tf)}` tidak tersedia\\.")
     
     # Gabungkan semua pesan menjadi satu jika terlalu banyak, atau kirim terpisah jika pendek
     full_message = "\n\n---\n\n".join(response_messages)
-    if len(full_message) < 4096: 
-        await send_message_to_telegram(user_chat_id, full_message)
-    else:
-        for msg_part in response_messages:
-            await send_message_to_telegram(user_chat_id, msg_part)
+    
+    print(f"DEBUG: Pesan status final disiapkan. Panjang: {len(full_message)}.") # <--- DEBUG TAMBAHAN
+    await send_message_to_telegram(user_chat_id, full_message)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -470,8 +478,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     # DEBUGGING: Cetak informasi user yang mengirim perintah /start
     print(f"DEBUG: Perintah '/start' diterima dari user: {user.full_name} ({update.effective_chat.id})")
+    # Coba kirim pesan yang sangat sederhana dulu untuk tes koneksi
     await send_message_to_telegram(update.effective_chat.id, 
                                  f"Halo, {escape_markdown_v2(user.full_name)}! Saya adalah bot sinyal BTC/USDT Anda\\. "
+                                 f"Jika Anda melihat pesan ini, koneksi dasar berhasil\\. "
                                  f"Gunakan `/status <timeframe>` \\(misalnya `/status 1h`\\) untuk melihat status terkini, "
                                  f"atau `/statusbtc` untuk melihat semua timeframe\\. "
                                  f"Saya juga akan mengirim sinyal global saat semua kondisi terpenuhi\\.")
@@ -490,7 +500,9 @@ async def main():
     # Mulai bot Telegram secara asynchronous
     # Inisialisasi bot dan mulai polling di latar belakang
     await application.initialize() # Inisialisasi bot Telegram
+    print("DEBUG: Aplikasi Telegram bot diinisialisasi.") # <--- DEBUG TAMBAHAN
     await application.start()      # Mulai bot Telegram
+    print("DEBUG: Aplikasi Telegram bot dimulai.") # <--- DEBUG TAMBAHAN
 
     # Buat daftar tugas untuk setiap koneksi WebSocket
     websocket_tasks = [handle_websocket(tf) for tf in TIMEFRAMES]
@@ -500,7 +512,7 @@ async def main():
 
     # Jalankan semua tugas secara bersamaan, KECUALI polling bot Telegram
     # Karena polling bot sudah dimulai dengan application.start()
-    print("Starting all WebSocket handlers and global signal checker...")
+    print("DEBUG: Memulai semua handler WebSocket dan checker sinyal global...")
     
     try:
         await asyncio.gather(
@@ -509,17 +521,17 @@ async def main():
         )
     finally:
         # Hentikan bot Telegram saat tugas lainnya selesai atau terjadi error
-        print("Stopping Telegram bot...")
+        print("DEBUG: Menghentikan bot Telegram...")
         await application.stop()
         await application.shutdown() # Tambahkan shutdown untuk membersihkan sumber daya
 
 
 if __name__ == "__main__":
-    if TELEGRAM_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN" or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
-        print("ERROR: Mohon isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di bagian KONFIGURASI.")
+    if TELEGRAM_TOKEN == "7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc" or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
+        print("ERROR: Mohon isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di bagian KONFIGURASI dengan benar!")
         print("TELEGRAM_CHAT_ID harus berupa integer non-nol (contoh: 123456789 atau -123456789).")
         print("Skrip tidak dapat berjalan tanpa konfigurasi yang benar.")
     else:
-        print("Starting the multi-timeframe GLOBAL signal bot with on-demand status...")
+        print("DEBUG: Memulai bot sinyal GLOBAL multi-timeframe dengan status on-demand...")
         asyncio.run(main())
 
