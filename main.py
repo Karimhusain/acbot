@@ -12,7 +12,7 @@ import websockets
 # === KONFIGURASI ===
 # PENTING: Ganti nilai-nilai placeholder ini dengan milik Anda!
 TELEGRAM_TOKEN = "7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc"  # Ganti dengan token bot Telegram Anda
-TELEGRAM_CHAT_ID = -5986744500       # Ganti dengan ID chat Telegram Anda, contoh: 123456789
+TELEGRAM_CHAT_ID = -1002675434660       # Ganti dengan ID chat Telegram Anda, contoh: 123456789
 
 # DEBUGGING: Cetak TELEGRAM_CHAT_ID yang digunakan saat startup
 print(f"DEBUG: TELEGRAM_CHAT_ID yang digunakan: {TELEGRAM_CHAT_ID}")
