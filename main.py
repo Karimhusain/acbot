@@ -241,15 +241,18 @@ def format_global_signal_output(global_signal_data):
 # === send_message_to_telegram - Fungsi umum untuk mengirim pesan ===
 async def send_message_to_telegram(chat_id: int, text: str):
     bot = Bot(token=TELEGRAM_TOKEN)
-    # DEBUGGING: Cetak chat_id yang sedang dicoba dikirimi pesan
     print(f"DEBUG: Mencoba mengirim pesan ke chat_id: {chat_id}")
+    print(f"DEBUG: Panjang pesan: {len(text)} karakter.")
+    print(f"DEBUG: Awal pesan: '{text[:500]}...'") # Cetak 500 karakter pertama pesan
     try:
         await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN_V2)
-        # DEBUGGING: Cetak konfirmasi jika pesan berhasil dikirim
         print(f"DEBUG: Pesan berhasil dikirim ke {chat_id}.")
     except Exception as e:
-        # DEBUGGING: Cetak error yang lebih informatif jika pengiriman gagal
         print(f"ERROR: Gagal mengirim Telegram message ke {chat_id}: {e}")
+        # Ini PENTING: cetak traceback lengkap untuk detail error
+        import traceback
+        traceback.print_exc()
+
 
 # === handle_websocket - Hanya untuk update data ===
 async def handle_websocket(timeframe):
