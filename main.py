@@ -527,11 +527,12 @@ async def main():
 
 
 if __name__ == "__main__":
-    if TELEGRAM_TOKEN == "7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc" or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
+    if not TELEGRAM_TOKEN or not isinstance(TELEGRAM_CHAT_ID, int) or TELEGRAM_CHAT_ID == 0:
         print("ERROR: Mohon isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di bagian KONFIGURASI dengan benar!")
         print("TELEGRAM_CHAT_ID harus berupa integer non-nol (contoh: 123456789 atau -123456789).")
         print("Skrip tidak dapat berjalan tanpa konfigurasi yang benar.")
     else:
         print("DEBUG: Memulai bot sinyal GLOBAL multi-timeframe dengan status on-demand...")
         asyncio.run(main())
+
 
