@@ -130,23 +130,29 @@ def build_message(analysis):
     msg += "\n#BTC #Signal #Trading"
     return msg
 
-def main():
-    last_message = ''
+import asyncio
+
+async def send_telegram_photo(bot, chat_id, photo_path, caption):
+    with open(photo_path, 'rb') as photo:
+        await bot.send_photo(chat_id=chat_id, photo=photo, caption=caption)
+
+async def main():
+    # buat bot async
+    bot = Bot(token=API_TELEGRAM_BOT)
+
     while True:
         try:
             df = fetch_klines(SYMBOL, INTERVAL, LIMIT)
             analysis = analyze_df(df)
             plot_chart_with_annotations(df, analysis, filename='chart.png')
             msg = build_message(analysis)
-            if msg != last_message:
-                bot.send_photo(chat_id=CHAT_ID, photo=open('chart.png', 'rb'), caption=msg)
-                last_message = msg
-                print("Sent update to Telegram.")
-            else:
-                print("No change, skipping Telegram message.")
+
+            await send_telegram_photo(bot, CHAT_ID, 'chart.png', msg)
+            print("Sent update to Telegram.")
         except Exception as e:
             print(f"[ERROR] {e}")
-        time.sleep(SLEEP_TIME)
+
+        await asyncio.sleep(SLEEP_TIME)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
