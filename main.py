@@ -53,7 +53,7 @@ def detect_stoch_divergence(df, stoch_k):
 def analyze_df(df):
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
-    rsi = RSIIndicator(df['close'], window=14).rsi()
+    rsi = RSIIndicator(df['close'], window=9).rsi()  # ✅ RSI 9
     stoch = StochasticOscillator(df['high'], df['low'], df['close'], window=5, smooth_window=3)
     stoch_k = stoch.stoch()
     stoch_d = stoch.stoch_signal()
