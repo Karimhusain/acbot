@@ -1,4 +1,4 @@
-import time
+import asyncio
 import requests
 import pandas as pd
 import mplfinance as mpf
@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator, StochasticOscillator
 from telegram import Bot
+from telegram.constants import ParseMode
 from datetime import datetime
-import asyncio
 
 # === CONFIG ===
-API_TELEGRAM_BOT = '7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc'
-CHAT_ID = '5986744500'
+API_TELEGRAM_BOT = 'TOKEN_BOT_MU'
+CHAT_ID = 'CHAT_ID_MU'
 SYMBOL = 'BTCUSDT'
 INTERVALS = ['1h', '4h', '1d']
 LIMIT = 100
@@ -53,7 +53,7 @@ def detect_stoch_divergence(df, stoch_k):
 def analyze_df(df):
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
-    rsi = RSIIndicator(df['close'], window=9).rsi()  # ✅ RSI 9
+    rsi = RSIIndicator(df['close'], window=9).rsi()
     stoch = StochasticOscillator(df['high'], df['low'], df['close'], window=5, smooth_window=3)
     stoch_k = stoch.stoch()
     stoch_d = stoch.stoch_signal()
@@ -139,19 +139,23 @@ def build_message(all_analysis):
     sell_tf = 0
 
     for tf, analysis in all_analysis.items():
-        msg += f"\n⏱️ Timeframe: {tf}\n"
-        msg += f"🔹 Trend: {analysis['trend']}\n"
-        msg += f"🔹 EMA13: {analysis['ema13']:.2f}\n"
-        msg += f"🔹 EMA21: {analysis['ema21']:.2f}\n"
-        msg += f"🔹 RSI: {analysis['rsi']:.2f}\n"
-        msg += f"🔹 Order Block: {analysis['order_block_price']:.2f}\n"
-        msg += f"🔹 RSI Divergence: {analysis['rsi_divergence'] or 'None'}\n"
-        msg += f"🔹 Stochastic K: {analysis['stoch_k']:.2f}\n"
-        msg += f"🔹 Stochastic D: {analysis['stoch_d']:.2f}\n"
-        msg += f"🔹 Stoch Status: {analysis['stoch_status']}\n"
-        msg += f"🔹 Stoch Divergence: {analysis['stoch_divergence'] or 'None'}\n"
-        msg += f"🔹 Signal Score: {analysis['score']}\n"
-        msg += f"🔹 Signal: {analysis['signal']}\n"
+        # Batasi pesan agar tidak terlalu panjang
+        rsi_div = analysis['rsi_divergence'] or 'None'
+        stoch_div = analysis['stoch_divergence'] or 'None'
+
+        msg += (f"\n⏱️ Timeframe: {tf}\n"
+                f"🔹 Trend: {analysis['trend']}\n"
+                f"🔹 EMA13: {analysis['ema13']:.2f}\n"
+                f"🔹 EMA21: {analysis['ema21']:.2f}\n"
+                f"🔹 RSI: {analysis['rsi']:.2f}\n"
+                f"🔹 Order Block: {analysis['order_block_price']:.2f}\n"
+                f"🔹 RSI Divergence: {rsi_div}\n"
+                f"🔹 Stoch K: {analysis['stoch_k']:.2f}\n"
+                f"🔹 Stoch D: {analysis['stoch_d']:.2f}\n"
+                f"🔹 Stoch Status: {analysis['stoch_status']}\n"
+                f"🔹 Stoch Divergence: {stoch_div}\n"
+                f"🔹 Score: {analysis['score']}\n"
+                f"🔹 Signal: {analysis['signal']}\n")
 
         summary_score += analysis['score']
         if analysis['signal'] == 'BUY':
@@ -166,14 +170,14 @@ def build_message(all_analysis):
     else:
         summary = "⚠️ SIGNAL MIXED / WAITING - KONSULTASI DENGAN KONDISI PASAR"
 
-    msg += f"\n📊 Ringkasan Sinyal Akhir: {summary}\n"
+    msg += f"\n📊 Ringkasan: {summary}\n"
     msg += "\n#BTC #MultiTimeframe #Signal #Trading"
 
-    return msg
+    # Potong jika terlalu panjang (maks 1024 char untuk caption Telegram)
+    if len(msg) > 1000:
+        msg = msg[:1000] + "\n\n[Pesan terpotong karena terlalu panjang]"
 
-async def send_telegram_photo(bot, chat_id, photo_path, caption):
-    with open(photo_path, 'rb') as photo:
-        await bot.send_photo(chat_id=chat_id, photo=photo, caption=caption)
+    return msg
 
 async def main():
     while True:
@@ -187,10 +191,14 @@ async def main():
                     plot_chart_with_annotations(df, analysis, filename='chart.png')
 
             msg = build_message(all_analysis)
-            await send_telegram_photo(bot, CHAT_ID, 'chart.png', msg)
+            # Kirim foto dan caption secara async
+            with open('chart.png', 'rb') as photo:
+                await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg, parse_mode=ParseMode.MARKDOWN)
+
             print("[INFO] Sinyal terkirim.")
         except Exception as e:
             print(f"[ERROR] {e}")
+
         await asyncio.sleep(SLEEP_TIME)
 
 if __name__ == "__main__":
