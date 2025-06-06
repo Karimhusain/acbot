@@ -10,8 +10,8 @@ from telegram.constants import ParseMode
 from datetime import datetime
 
 # === CONFIG ===
-API_TELEGRAM_BOT = 'TOKEN_BOT_MU'
-CHAT_ID = 'CHAT_ID_MU'
+API_TELEGRAM_BOT = '7614084480:AAEvOO2OdfBgaVLt_dPhwPbMLRW7sKAY0Nc'
+CHAT_ID = '5986744500'
 SYMBOL = 'BTCUSDT'
 INTERVALS = ['1h', '4h', '1d']
 LIMIT = 100
