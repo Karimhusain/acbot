@@ -198,7 +198,8 @@ async def main_loop(application):
             print(f"[ERROR] {e}")
         await asyncio.sleep(SLEEP_TIME)
 
+import asyncio
+
 if __name__ == "__main__":
     app = Application.builder().token(API_TELEGRAM_BOT).build()
-    app.run_async(main_loop(app))
-    app.run_polling()
+    asyncio.run(main_loop(app))
