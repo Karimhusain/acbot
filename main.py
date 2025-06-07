@@ -201,4 +201,4 @@ async def main_loop(application):
 if __name__ == "__main__":
     app = Application.builder().token(API_TELEGRAM_BOT).build()
     app.run_async(main_loop(app))
-    app.run_polling()  # biar aplikasi tetap hidup
+    app.run_polling()
