@@ -100,6 +100,7 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
+def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
@@ -108,18 +109,18 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
     ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
 
+    # ❌ HAPUS dpi=150 dari sini
     fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
-                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6), dpi=150)
+                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6))
 
     ax = axlist[0]  # main price axis
 
-    # Garis horizontal penuh Order Block
+    # Garis Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
         ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.2, alpha=0.7)
 
-    # Hilangkan anotasi panah agar lebih bersih, hanya garis EMA dan OB saja
-
+    # ✅ Simpan gambar dengan DPI di savefig()
     fig.savefig(filename, dpi=150)
     plt.close(fig)
 
