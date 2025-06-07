@@ -100,33 +100,37 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
+    from matplotlib.ticker import FuncFormatter
+
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
-    ap0 = mpf.make_addplot(ema13, color='blue')
-    ap1 = mpf.make_addplot(ema21, color='orange')
+    ap0 = mpf.make_addplot(ema13, color='cyan', width=1.2)
+    ap1 = mpf.make_addplot(ema21, color='orange', width=1.2)
 
-    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='yahoo',
-                           addplot=[ap0, ap1], returnfig=True)
-    ax = axlist[0]
+    fig, axlist = mpf.plot(
+        df_plot, 
+        type='candle', 
+        volume=True, 
+        style='binance',   # style seperti Binance
+        addplot=[ap0, ap1], 
+        returnfig=True,
+        figsize=(10,6),
+        dpi=150,          # resolusi tinggi
+    )
+    ax = axlist[0]  # axes utama candlestick
 
+    # Garis horizontal penuh Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
-        ob_idx = (df['close'] - ob_price).abs().idxmin()
-        if ob_idx:
-            ax.annotate('Order Block', xy=(ob_idx, ob_price),
-                        xytext=(ob_idx, ob_price * 1.02),
-                        arrowprops=dict(facecolor='green', shrink=0.05),
-                        fontsize=9, color='green')
+        ax.axhline(ob_price, color='green', linestyle='--', linewidth=1, alpha=0.7)
 
-    stoch_status = analysis.get('stoch_status')
-    if stoch_status and stoch_status != "Neutral":
-        ax.annotate(f'Stoch: {stoch_status}', xy=(df.index[-1], df['close'].iloc[-1]),
-                    xytext=(df.index[-1], df['close'].iloc[-1] * 1.02),
-                    arrowprops=dict(facecolor='purple', shrink=0.05),
-                    fontsize=9, color='purple')
+    # Tidak ada anotasi panah atau teks lain agar chart lebih bersih
+
+    # (Opsional) Format y-axis harga agar lebih readable, misal pakai ribuan koma
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:,.0f}'))
 
     fig.savefig(filename)
     plt.close(fig)
