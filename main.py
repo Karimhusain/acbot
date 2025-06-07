@@ -101,6 +101,10 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png', timeframe='1H', symbol='BTCUSDT'):
+    from ta.trend import EMAIndicator
+    import matplotlib.pyplot as plt
+    import mplfinance as mpf
+
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
@@ -118,7 +122,6 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png', timeframe='1
     fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style=s,
                            addplot=[ap0, ap1], returnfig=True, figsize=(12, 8))
 
-    fig.set_dpi(150)
     ax = axlist[0]      # Chart utama
     ax_vol = axlist[2]  # Chart volume (di bawah)
 
@@ -128,7 +131,12 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png', timeframe='1
         ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7, label='Order Block')
 
     # Tambah legend
-    ax.legend(['EMA13 (cyan)', 'EMA21 (orange)', 'Order Block (green dashed)'])
+    handles = []
+    handles.append(plt.Line2D([0], [0], color='cyan', label='EMA13'))
+    handles.append(plt.Line2D([0], [0], color='orange', label='EMA21'))
+    if ob_price:
+        handles.append(plt.Line2D([0], [0], color='green', linestyle='--', label='Order Block'))
+    ax.legend(handles=handles, loc='upper right', fontsize=9)
 
     # Tulisan kiri atas
     ax.text(0.01, 0.95, f"{symbol} Timeframe {timeframe}",
@@ -148,6 +156,9 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png', timeframe='1
     ax_vol.yaxis.tick_right()
     ax_vol.yaxis.set_label_position("right")
     ax_vol.set_ylabel("Volume", fontsize=9, labelpad=10, rotation=270)
+
+    # Watermark tengah kiri (opsional)
+    fig.text(0.01, 0.5, symbol, fontsize=28, color='lightgray', alpha=0.15, rotation=90, va='center')
 
     # Simpan chart
     fig.savefig(filename, bbox_inches='tight', facecolor='white')
