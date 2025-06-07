@@ -100,27 +100,61 @@ def analyze_df(df):
         'signal': signal
     }
 
-def plot_chart_with_annotations(df, analysis, filename='chart.png'):
+def plot_chart_with_annotations(df, analysis, filename='chart.png', timeframe='1H', symbol='BTCUSDT'):
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
+    # Custom marketcolors: up candle oranye, down merah
+    mc = mpf.make_marketcolors(up='orange', down='red', wick='black', edge='black', volume='orange')
+
+    # Custom style dari binance, tapi ganti marketcolors
+    s = mpf.make_mpf_style(base_mpf_style='binance', marketcolors=mc)
+
     ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
     ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
 
-    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
-                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6))
-    fig.set_dpi(150)  # Set DPI setelah fig dibuat
-    ax = axlist[0]
+    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style=s,
+                           addplot=[ap0, ap1], returnfig=True, figsize=(12,8))
+    fig.set_dpi(150)
+    ax = axlist[0]  # candlestick axes
+    ax_vol = axlist[2]  # volume axes (default posisi di bawah)
 
+    # Garis horizontal Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
         ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7, label='Order Block')
 
+    # Tambahkan legend manual (EMA13, EMA21, Order Block)
     ax.legend(['EMA13 (cyan)', 'EMA21 (orange)', 'Order Block (green dashed)'])
 
-    fig.savefig(filename)
+    # Tambahkan tulisan di kiri atas chart
+    ax.text(0.01, 0.95, f"{symbol} Timeframe {timeframe}",
+            transform=ax.transAxes, fontsize=12, fontweight='bold', va='top', ha='left', color='white',
+            bbox=dict(facecolor='black', alpha=0.5, boxstyle='round,pad=0.3'))
+
+    # Tambahkan tulisan di bawah chart (pas di bawah candlestick)
+    last_price = analysis.get('last_close')
+    fig.text(0.01, 0.02, f"Harga saat ini: {last_price:.2f}",
+             fontsize=11, fontweight='bold', color='black', ha='left')
+
+    # --- Posisi volume axis di kanan (opsional dan sedikit tricky) ---
+    # Default volume axis di bawah candlestick dan di kiri
+    # Untuk pindah ke kanan, perlu ubah posisi axis, contohnya seperti ini:
+
+    # Pindahkan volume axis ke kanan bawah (sebatas mungkin)
+    ax_vol_pos = ax_vol.get_position()
+    new_pos = [0.85, ax_vol_pos.y0, ax_vol_pos.width, ax_vol_pos.height]
+    ax_vol.set_position(new_pos)
+    ax_vol.yaxis.tick_right()
+    ax_vol.yaxis.set_label_position("right")
+
+    # Tambahkan label volume di kanan bawah
+    ax_vol.set_ylabel('Volume', rotation=270, labelpad=15, fontsize=10)
+
+    # Save dan tutup
+    fig.savefig(filename, bbox_inches='tight', facecolor='white')
     plt.close(fig)
 
 def build_message(all_analysis):
