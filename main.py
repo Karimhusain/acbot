@@ -100,29 +100,36 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
-def plot_chart_with_annotations(df, analysis, filename='chart.png'):
-    ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
-    ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
-    df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
-    df_plot.index.name = 'Date'
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
 
-    ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
-    ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
+    plt.figure(figsize=(14, 7))
 
-    # ❌ HAPUS dpi=150 dari sini
-    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
-                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6))
+    if not isinstance(df.index, (pd.DatetimeIndex, )):
+        df.index = pd.to_datetime(df.index)
 
-    ax = axlist[0]  # main price axis
+    plt.plot(df.index, df['close'], label='Close Price', color='black', linewidth=1)
 
-    # Garis Order Block
-    ob_price = analysis.get('order_block_price')
-    if ob_price:
-        ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.2, alpha=0.7)
+    for idx, row in analysis.iterrows():
+        if row['signal'] == 'buy':
+            plt.scatter(df.index[idx], df['close'].iloc[idx], color='green', marker='^',
+                        label='Buy Signal' if 'Buy Signal' not in plt.gca().get_legend_handles_labels()[1] else "")
+        elif row['signal'] == 'sell':
+            plt.scatter(df.index[idx], df['close'].iloc[idx], color='red', marker='v',
+                        label='Sell Signal' if 'Sell Signal' not in plt.gca().get_legend_handles_labels()[1] else "")
 
-    # ✅ Simpan gambar dengan DPI di savefig()
-    fig.savefig(filename, dpi=150)
-    plt.close(fig)
+    plt.title('BTC/USDT Price Chart with Buy/Sell Signals')
+    plt.xlabel('Time')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+    plt.gcf().autofmt_xdate()
+
+    plt.savefig(filename)
+    plt.close()
 
 def build_message(all_analysis):
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
