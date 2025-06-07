@@ -105,24 +105,21 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
-    ap0 = mpf.make_addplot(ema13, color='cyan')
-    ap1 = mpf.make_addplot(ema21, color='orange')
+    ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
+    ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
 
-    # Buat plot dan dapatkan fig, axes
-    fig, axes = mpf.plot(df_plot, type='candle', style='binance', addplot=[ap0, ap1],
-                         volume=True, returnfig=True, figsize=(10,6), dpi=150, show_nontrading=False)
+    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
+                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6), dpi=150)
 
-    ax_main = axes[0]  # Axes utama (candlestick)
-    ax_vol = axes[2]   # Axes volume (default index 2)
+    ax = axlist[0]  # main price axis
 
-    # Tambah garis horizontal order block di chart utama
+    # Garis horizontal penuh Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
-        ax_main.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.2, alpha=0.7)
 
-    # Hapus anotasi panah (tidak kita pakai)
+    # Hilangkan anotasi panah agar lebih bersih, hanya garis EMA dan OB saja
 
-    # Simpan file dengan dpi=150 agar lebih tajam
     fig.savefig(filename, dpi=150)
     plt.close(fig)
 
@@ -134,7 +131,6 @@ def build_message(all_analysis):
     sell_tf = 0
 
     for tf, analysis in all_analysis.items():
-        # Batasi pesan agar tidak terlalu panjang
         rsi_div = analysis['rsi_divergence'] or 'None'
         stoch_div = analysis['stoch_divergence'] or 'None'
 
@@ -168,7 +164,6 @@ def build_message(all_analysis):
     msg += f"\n📊 Ringkasan: {summary}\n"
     msg += "\n#BTC #MultiTimeframe #Signal #Trading"
 
-    # Potong jika terlalu panjang (maks 1024 char untuk caption Telegram)
     if len(msg) > 1000:
         msg = msg[:1000] + "\n\n[Pesan terpotong karena terlalu panjang]"
 
@@ -185,16 +180,4 @@ async def main():
                 if tf == '1h':
                     plot_chart_with_annotations(df, analysis, filename='chart.png')
 
-            msg = build_message(all_analysis)
-            # Kirim foto dan caption secara async
-            with open('chart.png', 'rb') as photo:
-                await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg, parse_mode=ParseMode.MARKDOWN)
-
-            print("[INFO] Sinyal terkirim.")
-        except Exception as e:
-            print(f"[ERROR] {e}")
-
-        await asyncio.sleep(SLEEP_TIME)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            msg =
