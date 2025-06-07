@@ -106,28 +106,25 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
-    ap0 = mpf.make_addplot(ema13, color='blue')
-    ap1 = mpf.make_addplot(ema21, color='orange')
+    # Warna EMA yang lebih jelas: cyan & orange
+    ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
+    ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
 
-    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='yahoo',
-                           addplot=[ap0, ap1], returnfig=True)
+    # Style chart seperti Binance, dengan volume dan dpi tinggi untuk tajam
+    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
+                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6), dpi=150)
     ax = axlist[0]
 
+    # Garis horizontal penuh untuk Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
-        ob_idx = (df['close'] - ob_price).abs().idxmin()
-        if ob_idx:
-            ax.annotate('Order Block', xy=(ob_idx, ob_price),
-                        xytext=(ob_idx, ob_price * 1.02),
-                        arrowprops=dict(facecolor='green', shrink=0.05),
-                        fontsize=9, color='green')
+        ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7, label='Order Block')
 
-    stoch_status = analysis.get('stoch_status')
-    if stoch_status and stoch_status != "Neutral":
-        ax.annotate(f'Stoch: {stoch_status}', xy=(df.index[-1], df['close'].iloc[-1]),
-                    xytext=(df.index[-1], df['close'].iloc[-1] * 1.02),
-                    arrowprops=dict(facecolor='purple', shrink=0.05),
-                    fontsize=9, color='purple')
+    # Hapus anotasi panah dan teks supaya tidak terlalu ramai
+    # Jadi tidak ada anotasi RSI/Stoch
+
+    # Optional: tambahkan legend agar garis EMA dan Order Block jelas
+    ax.legend(['EMA13 (cyan)', 'EMA21 (orange)', 'Order Block (green dashed)'])
 
     fig.savefig(filename)
     plt.close(fig)
