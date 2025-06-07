@@ -101,6 +101,7 @@ def analyze_df(df):
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     from matplotlib.ticker import FuncFormatter
+    import matplotlib.pyplot as plt
 
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
@@ -110,26 +111,29 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     ap0 = mpf.make_addplot(ema13, color='cyan', width=1.2)
     ap1 = mpf.make_addplot(ema21, color='orange', width=1.2)
 
-    fig, axlist = mpf.plot(
-        df_plot, 
-        type='candle', 
-        volume=True, 
-        style='binance',   # style seperti Binance
-        addplot=[ap0, ap1], 
-        returnfig=True,
-        figsize=(10,6),
-        dpi=150,          # resolusi tinggi
-    )
-    ax = axlist[0]  # axes utama candlestick
+    # buat figure dan axes manual dengan dpi=150
+    fig, axlist = plt.subplots(2, 1, figsize=(10, 6), dpi=150,
+                               gridspec_kw={"height_ratios": [3, 1]})
 
-    # Garis horizontal penuh Order Block
+    # plot ke axes yang sudah dibuat
+    mpf.plot(
+        df_plot,
+        type='candle',
+        volume=True,
+        style='binance',
+        addplot=[ap0, ap1],
+        fig=fig,
+        ax=axlist[0],
+        volume=axlist[1],
+        show_nontrading=False
+    )
+
+    ax = axlist[0]
+
     ob_price = analysis.get('order_block_price')
     if ob_price:
         ax.axhline(ob_price, color='green', linestyle='--', linewidth=1, alpha=0.7)
 
-    # Tidak ada anotasi panah atau teks lain agar chart lebih bersih
-
-    # (Opsional) Format y-axis harga agar lebih readable, misal pakai ribuan koma
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:,.0f}'))
 
     fig.savefig(filename)
