@@ -2,10 +2,13 @@ import asyncio
 import requests
 import pandas as pd
 import mplfinance as mpf
+import matplotlib
+matplotlib.use("Agg")  # penting untuk VPS/headless
 import matplotlib.pyplot as plt
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator, StochasticOscillator
-from telegram import Bot
+from telegram import InputFile
+from telegram.ext import Application
 from telegram.constants import ParseMode
 from datetime import datetime
 
@@ -16,8 +19,6 @@ SYMBOL = 'BTCUSDT'
 INTERVALS = ['1h', '4h', '1d']
 LIMIT = 100
 SLEEP_TIME = 900  # 15 menit
-
-bot = Bot(token=API_TELEGRAM_BOT)
 
 def fetch_klines(symbol, interval, limit=100):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
@@ -100,36 +101,36 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
+    ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
+    ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
+    df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
+    df_plot.index.name = 'Date'
 
-    plt.figure(figsize=(14, 7))
+    ap0 = mpf.make_addplot(ema13, color='blue')
+    ap1 = mpf.make_addplot(ema21, color='orange')
 
-    if not isinstance(df.index, (pd.DatetimeIndex, )):
-        df.index = pd.to_datetime(df.index)
+    fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='yahoo',
+                           addplot=[ap0, ap1], returnfig=True)
+    ax = axlist[0]
 
-    plt.plot(df.index, df['close'], label='Close Price', color='black', linewidth=1)
+    ob_price = analysis.get('order_block_price')
+    if ob_price:
+        ob_idx = (df['close'] - ob_price).abs().idxmin()
+        if ob_idx:
+            ax.annotate('Order Block', xy=(ob_idx, ob_price),
+                        xytext=(ob_idx, ob_price * 1.02),
+                        arrowprops=dict(facecolor='green', shrink=0.05),
+                        fontsize=9, color='green')
 
-    for idx, row in analysis.iterrows():
-        if row['signal'] == 'buy':
-            plt.scatter(df.index[idx], df['close'].iloc[idx], color='green', marker='^',
-                        label='Buy Signal' if 'Buy Signal' not in plt.gca().get_legend_handles_labels()[1] else "")
-        elif row['signal'] == 'sell':
-            plt.scatter(df.index[idx], df['close'].iloc[idx], color='red', marker='v',
-                        label='Sell Signal' if 'Sell Signal' not in plt.gca().get_legend_handles_labels()[1] else "")
+    stoch_status = analysis.get('stoch_status')
+    if stoch_status and stoch_status != "Neutral":
+        ax.annotate(f'Stoch: {stoch_status}', xy=(df.index[-1], df['close'].iloc[-1]),
+                    xytext=(df.index[-1], df['close'].iloc[-1] * 1.02),
+                    arrowprops=dict(facecolor='purple', shrink=0.05),
+                    fontsize=9, color='purple')
 
-    plt.title('BTC/USDT Price Chart with Buy/Sell Signals')
-    plt.xlabel('Time')
-    plt.ylabel('Price')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-
-    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-    plt.gcf().autofmt_xdate()
-
-    plt.savefig(filename)
-    plt.close()
+    fig.savefig(filename)
+    plt.close(fig)
 
 def build_message(all_analysis):
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -177,7 +178,7 @@ def build_message(all_analysis):
 
     return msg
 
-async def main():
+async def main_loop(application):
     while True:
         try:
             all_analysis = {}
@@ -189,17 +190,15 @@ async def main():
                     plot_chart_with_annotations(df, analysis, filename='chart.png')
 
             msg = build_message(all_analysis)
-
-            # Kirim foto chart dengan caption ke Telegram
             with open('chart.png', 'rb') as photo:
-                await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg, parse_mode=ParseMode.MARKDOWN)
+                await application.bot.send_photo(chat_id=CHAT_ID, photo=InputFile(photo), caption=msg, parse_mode=ParseMode.MARKDOWN)
 
-            print(f"[{datetime.utcnow()}] Pesan terkirim, menunggu {SLEEP_TIME} detik...")
-            await asyncio.sleep(SLEEP_TIME)
+            print("[INFO] Sinyal terkirim.")
         except Exception as e:
-            print(f"Error: {e}")
-            await asyncio.sleep(60)
+            print(f"[ERROR] {e}")
+        await asyncio.sleep(SLEEP_TIME)
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    app = Application.builder().token(API_TELEGRAM_BOT).build()
+    app.run_async(main_loop(app))
+    app.run_polling()  # biar aplikasi tetap hidup
