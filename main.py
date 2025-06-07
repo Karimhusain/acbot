@@ -100,41 +100,30 @@ def analyze_df(df):
     }
 
 def plot_chart_with_annotations(df, analysis, filename='chart.png'):
-    from matplotlib.ticker import FuncFormatter
-    import matplotlib.pyplot as plt
-
     ema13 = EMAIndicator(df['close'], window=13).ema_indicator()
     ema21 = EMAIndicator(df['close'], window=21).ema_indicator()
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
-    ap0 = mpf.make_addplot(ema13, color='cyan', width=1.2)
-    ap1 = mpf.make_addplot(ema21, color='orange', width=1.2)
+    ap0 = mpf.make_addplot(ema13, color='cyan')
+    ap1 = mpf.make_addplot(ema21, color='orange')
 
-    # buat figure dan axes manual dengan dpi=150
-    fig, axlist = plt.subplots(2, 1, figsize=(10, 6), dpi=150,
-                               gridspec_kw={"height_ratios": [3, 1]})
+    # Buat plot dan dapatkan fig, axes
+    fig, axes = mpf.plot(df_plot, type='candle', style='binance', addplot=[ap0, ap1],
+                         volume=True, returnfig=True, figsize=(10,6), dpi=150, show_nontrading=False)
 
-    # plot ke axes yang sudah dibuat
-    mpf.plot(
-    df_plot,
-    type='candle',
-    style='binance',
-    addplot=[ap0, ap1],
-    fig=fig,
-    ax=axlist[0],
-    volume=axlist[1],
-    show_nontrading=False
-    )
-    ax = axlist[0]
+    ax_main = axes[0]  # Axes utama (candlestick)
+    ax_vol = axes[2]   # Axes volume (default index 2)
 
+    # Tambah garis horizontal order block di chart utama
     ob_price = analysis.get('order_block_price')
     if ob_price:
-        ax.axhline(ob_price, color='green', linestyle='--', linewidth=1, alpha=0.7)
+        ax_main.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
 
-    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{x:,.0f}'))
+    # Hapus anotasi panah (tidak kita pakai)
 
-    fig.savefig(filename)
+    # Simpan file dengan dpi=150 agar lebih tajam
+    fig.savefig(filename, dpi=150)
     plt.close(fig)
 
 def build_message(all_analysis):
