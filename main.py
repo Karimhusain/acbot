@@ -117,17 +117,15 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
 
     # plot ke axes yang sudah dibuat
     mpf.plot(
-        df_plot,
-        type='candle',
-        volume=True,
-        style='binance',
-        addplot=[ap0, ap1],
-        fig=fig,
-        ax=axlist[0],
-        volume=axlist[1],
-        show_nontrading=False
+    df_plot,
+    type='candle',
+    style='binance',
+    addplot=[ap0, ap1],
+    fig=fig,
+    ax=axlist[0],
+    volume=axlist[1],
+    show_nontrading=False
     )
-
     ax = axlist[0]
 
     ob_price = analysis.get('order_block_price')
