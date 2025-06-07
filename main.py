@@ -106,24 +106,18 @@ def plot_chart_with_annotations(df, analysis, filename='chart.png'):
     df_plot = df[['open', 'high', 'low', 'close', 'volume']].copy()
     df_plot.index.name = 'Date'
 
-    # Warna EMA yang lebih jelas: cyan & orange
     ap0 = mpf.make_addplot(ema13, color='cyan', width=1.5)
     ap1 = mpf.make_addplot(ema21, color='orange', width=1.5)
 
-    # Style chart seperti Binance, dengan volume dan dpi tinggi untuk tajam
     fig, axlist = mpf.plot(df_plot, type='candle', volume=True, style='binance',
-                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6), dpi=150)
+                           addplot=[ap0, ap1], returnfig=True, figsize=(10,6))
+    fig.set_dpi(150)  # Set DPI setelah fig dibuat
     ax = axlist[0]
 
-    # Garis horizontal penuh untuk Order Block
     ob_price = analysis.get('order_block_price')
     if ob_price:
         ax.axhline(ob_price, color='green', linestyle='--', linewidth=1.5, alpha=0.7, label='Order Block')
 
-    # Hapus anotasi panah dan teks supaya tidak terlalu ramai
-    # Jadi tidak ada anotasi RSI/Stoch
-
-    # Optional: tambahkan legend agar garis EMA dan Order Block jelas
     ax.legend(['EMA13 (cyan)', 'EMA21 (orange)', 'Order Block (green dashed)'])
 
     fig.savefig(filename)
