@@ -180,4 +180,14 @@ async def main():
                 if tf == '1h':
                     plot_chart_with_annotations(df, analysis, filename='chart.png')
 
-            msg =
+            msg = build_message(all_analysis)
+
+            # Kirim foto chart dengan caption ke Telegram
+            with open('chart.png', 'rb') as photo:
+                await bot.send_photo(chat_id=CHAT_ID, photo=photo, caption=msg, parse_mode=ParseMode.MARKDOWN)
+
+            print(f"[{datetime.utcnow()}] Pesan terkirim, menunggu {SLEEP_TIME} detik...")
+            await asyncio.sleep(SLEEP_TIME)
+        except Exception as e:
+            print(f"Error: {e}")
+            await asyncio.sleep(60)
